@@ -1,0 +1,14 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+websockets>=14.0
+google-genai>=1.60.0
+google-auth>=2.35.0
+requests>=2.32.0
+transformers>=4.46.0
+sentence-transformers>=3.2.0
+silero-vad>=5.1.2
+librosa>=0.10.2.post1
+soundfile>=0.12.1
+numpy>=1.26.4
+scipy>=1.14.0
+python-multipart>=0.0.12

@@ -1,0 +1,29 @@
+# Credentials and Secrets (NEVER COMMIT)
+*.pem
+*.key
+*key*.json
+*credentials*.json
+*service-account*.json
+*adc*.json
+.env
+.env.*
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Model / HuggingFace / Torch runtime caches
+.cache/
+*.log
+.DS_Store

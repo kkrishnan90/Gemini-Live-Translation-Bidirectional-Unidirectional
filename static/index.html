@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#f6f5f2" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>Gemini Live Translation · gemini-3.8-live</title>
+  <meta
+    name="description"
+    content="Mobile-first unidirectional speech interpreter powered by Prosodia and gemini-3.8-live on GEAP."
+  />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="mobile-viewport">
+    <div class="device-frame">
+      <!-- Minimal Top Bar -->
+      <header class="app-topbar">
+        <div class="brand-lockup">
+          <span class="status-indicator" id="ws-status-dot" title="Connection Status"></span>
+          <div class="brand-titles">
+            <h1 class="app-title">Gemini Live Translation</h1>
+            <span class="app-meta" id="ws-status-text">Connecting to gemini-3.8-live...</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button
+            type="button"
+            class="icon-btn"
+            id="clear-stream-btn"
+            title="Clear conversation"
+            aria-label="Clear conversation"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18" />
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="icon-btn"
+            id="settings-toggle-btn"
+            title="Interpreter Settings"
+            aria-label="Interpreter Settings"
+            aria-expanded="false"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Minimal Language Pair Selector -->
+      <section class="lang-switcher" aria-label="Language Pair">
+        <div class="lang-pill lang-pill-source">
+          <div class="lang-pill-header">
+            <span class="lang-role-label">Source</span>
+            <span class="lang-role-rule rule-silent">Silent</span>
+          </div>
+          <div class="select-wrap">
+            <select id="source-lang-select" aria-label="Source Language"></select>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="swap-circle-btn"
+          id="swap-langs-btn"
+          title="Swap Source and Target Languages"
+          aria-label="Swap Source and Target Languages"
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 16V4m0 0L3 8m4-4l4 4" />
+            <path d="M17 8v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
+        </button>
+
+        <div class="lang-pill lang-pill-target">
+          <div class="lang-pill-header">
+            <span class="lang-role-label">Target</span>
+            <span class="lang-role-rule rule-translate">Translate</span>
+          </div>
+          <div class="select-wrap">
+            <select id="target-lang-select" aria-label="Target Language"></select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Collapsible Settings Sheet -->
+      <section class="settings-sheet hidden" id="settings-sheet" aria-label="Voice and Gate Telemetry">
+        <div class="sheet-row">
+          <div class="sheet-field">
+            <label for="voice-select">Voice</label>
+            <select id="voice-select">
+              <option value="Kore" selected>Kore</option>
+              <option value="Puck">Puck</option>
+              <option value="Aoede">Aoede</option>
+              <option value="Charon">Charon</option>
+              <option value="Fenrir">Fenrir</option>
+            </select>
+          </div>
+          <button type="button" class="sheet-btn" id="connect-btn">Reconnect</button>
+        </div>
+
+        <div class="telemetry-compact">
+          <div class="telemetry-probs">
+            <div class="t-prob-item">
+              <div class="t-prob-top">
+                <span id="prob-source-label">Source</span>
+                <span id="prob-source-val">0%</span>
+              </div>
+              <div class="t-prob-bar"><div class="t-prob-fill fill-src" id="prob-source-bar"></div></div>
+            </div>
+            <div class="t-prob-item">
+              <div class="t-prob-top">
+                <span id="prob-target-label">Target</span>
+                <span id="prob-target-val">0%</span>
+              </div>
+              <div class="t-prob-bar"><div class="t-prob-fill fill-tgt" id="prob-target-bar"></div></div>
+            </div>
+          </div>
+          <div class="telemetry-chips">
+            <span class="t-chip" id="gate-latency-badge">LID: -- ms</span>
+            <span class="t-chip" id="m-detected-lang">Lang: --</span>
+            <span class="t-chip" id="m-emotion">Emotion: --</span>
+            <span class="t-chip" id="m-rate">Pace: --</span>
+            <span class="t-chip" id="m-pitch">Pitch: --</span>
+            <span class="t-chip" id="m-loudness">Loudness: --</span>
+            <span class="t-chip" id="m-bytes-sent">0 B</span>
+            <span class="t-chip" id="vad-state-tag">VAD: IDLE</span>
+            <span class="t-chip" id="geap-project-tag">GEAP</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Gate Status Pill -->
+      <div class="live-gate-pill" id="gate-banner">
+        <span class="gate-pill-tag" id="gate-banner-action">STANDBY</span>
+        <span class="gate-pill-text" id="gate-banner-headline">Tap microphone to start listening</span>
+        <span class="sr-only" id="gate-banner-reason"></span>
+      </div>
+
+      <!-- Conversation & Gate Stream -->
+      <main class="conversation-stage" id="stream-list" aria-live="polite">
+        <div class="empty-stage" id="empty-stream-state">
+          <div class="empty-icon-ring">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" x2="12" y1="19" y2="22" />
+            </svg>
+          </div>
+          <p class="empty-headline">Unidirectional Speech Interpreter</p>
+          <p class="empty-subtext">
+            Target speech is translated into your Source language in real time. When you speak the Source language, the interpreter stays silent.
+          </p>
+        </div>
+      </main>
+
+      <!-- Minimal Bottom Thumb-Zone Dock -->
+      <footer class="bottom-dock">
+        <button type="button" class="mic-primary-btn" id="mic-btn">
+          <span class="mic-icon-wrap">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" x2="12" y1="19" y2="22" />
+            </svg>
+          </span>
+          <span class="mic-btn-label" id="mic-btn-label">Tap to Listen</span>
+        </button>
+      </footer>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
