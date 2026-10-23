@@ -3,6 +3,9 @@
   const targetSelect = document.getElementById('target-lang-select');
   const swapBtn = document.getElementById('swap-langs-btn');
   const voiceSelect = document.getElementById('voice-select');
+  const bidirectionalToggle = document.getElementById('bidirectional-toggle');
+  const bidirectionalModeHint = document.getElementById('bidirectional-mode-hint');
+  const sourceRoleBadge = document.getElementById('source-role-badge');
   const connectBtn = document.getElementById('connect-btn');
   const micBtn = document.getElementById('mic-btn');
   const micBtnLabel = document.getElementById('mic-btn-label');
@@ -147,11 +150,41 @@
     return raw.split(' (')[0];
   }
 
+  function isBidirectionalEnabled() {
+    return Boolean(bidirectionalToggle && bidirectionalToggle.checked);
+  }
+
   function updateProbabilityLabels() {
     const srcCode = sourceSelect.value || 'en-US';
     const tgtCode = targetSelect.value || 'hi-IN';
-    probSourceLabel.textContent = `${shortLangName(srcCode)} (Silent)`;
+    const bi = isBidirectionalEnabled();
+
+    probSourceLabel.textContent = `${shortLangName(srcCode)} (${bi ? 'Translate' : 'Silent'})`;
     probTargetLabel.textContent = `${shortLangName(tgtCode)} (Translate)`;
+
+    if (probSourceBar) {
+      probSourceBar.className = `t-prob-fill ${bi ? 'fill-tgt' : 'fill-src'}`;
+    }
+    if (sourceRoleBadge) {
+      sourceRoleBadge.textContent = bi ? 'Translate' : 'Silent';
+      sourceRoleBadge.className = `lang-role-rule ${bi ? 'rule-translate' : 'rule-silent'}`;
+    }
+    if (bidirectionalModeHint) {
+      bidirectionalModeHint.textContent = bi
+        ? 'On: Source <-> Target (Other languages stay silent)'
+        : 'Off: Target -> Source only (Source stays silent)';
+    }
+
+    const emptyHeadline = document.querySelector('.empty-headline');
+    const emptySubtext = document.querySelector('.empty-subtext');
+    if (emptyHeadline && emptySubtext) {
+      emptyHeadline.textContent = bi
+        ? 'Bidirectional Speech Interpreter'
+        : 'Unidirectional Speech Interpreter';
+      emptySubtext.textContent = bi
+        ? 'Both Source and Target speech are translated seamlessly in real time. Any other spoken language stays silent.'
+        : 'Target speech is translated into your Source language in real time. When you speak the Source language, the interpreter stays silent.';
+    }
   }
 
   function clearEmptyState() {
@@ -180,10 +213,11 @@
     mLoudness.textContent = `Loudness: ${pros.loudness_level || '--'}`;
 
     gateBanner.className = 'live-gate-pill';
+    const outLangCode = d.translated_to_lang || d.source_lang;
     if (d.should_translate) {
       gateBanner.classList.add('state-translate');
       gateBannerAction.textContent = `TRANSLATING · ${d.inference_ms} ms`;
-      gateBannerHeadline.textContent = `${d.detected_language_name} -> ${shortLangName(d.source_lang)}`;
+      gateBannerHeadline.textContent = `${d.detected_language_name} -> ${shortLangName(outLangCode)}`;
     } else {
       gateBanner.classList.add('state-silent');
       gateBannerAction.textContent = `SILENT · ${d.inference_ms} ms`;
@@ -201,7 +235,7 @@
       card.innerHTML = `
         <div class="card-top-row">
           <span class="card-pill pill-translated">
-            ${d.detected_language_name} -> ${shortLangName(d.source_lang)}
+            ${d.detected_language_name} -> ${shortLangName(outLangCode)}
           </span>
           <span class="card-meta-inline audio-play-status">LID ${d.inference_ms} ms</span>
         </div>
@@ -258,6 +292,7 @@
             source_lang: sourceSelect.value,
             target_lang: targetSelect.value,
             voice_name: voiceSelect.value,
+            bidirectional: isBidirectionalEnabled(),
           },
         })
       );
@@ -273,9 +308,10 @@
         const mtype = msg.type;
         if (mtype === 'session_ready') {
           wsReady = true;
+          const arrow = msg.config.bidirectional ? '<->' : '->';
           updateStatusUI(
             'connected',
-            `gemini-3.8-live · ${shortLangName(msg.config.target_lang)} -> ${shortLangName(msg.config.source_lang)}`
+            `gemini-3.8-live · ${shortLangName(msg.config.target_lang)} ${arrow} ${shortLangName(msg.config.source_lang)}`
           );
           if (typeof onReadyCallback === 'function') {
             const cb = onReadyCallback;
@@ -351,6 +387,7 @@
             source_lang: sourceSelect.value,
             target_lang: targetSelect.value,
             voice_name: voiceSelect.value,
+            bidirectional: isBidirectionalEnabled(),
           },
         })
       );
@@ -436,7 +473,9 @@
       micBtn.classList.add('recording');
       micBtnLabel.textContent = 'Listening · Tap to Stop';
       gateBannerAction.textContent = 'MIC LIVE';
-      gateBannerHeadline.textContent = `Speak ${shortLangName(targetSelect.value)} to translate, or ${shortLangName(sourceSelect.value)} for silence`;
+      gateBannerHeadline.textContent = isBidirectionalEnabled()
+        ? `Speak ${shortLangName(sourceSelect.value)} or ${shortLangName(targetSelect.value)} to translate (other languages stay silent)`
+        : `Speak ${shortLangName(targetSelect.value)} to translate, or ${shortLangName(sourceSelect.value)} for silence`;
     } catch (err) {
       alert(`Microphone access error: ${err.message}`);
     }
@@ -497,6 +536,9 @@
   sourceSelect.addEventListener('change', pushConfigUpdate);
   targetSelect.addEventListener('change', pushConfigUpdate);
   voiceSelect.addEventListener('change', pushConfigUpdate);
+  if (bidirectionalToggle) {
+    bidirectionalToggle.addEventListener('change', pushConfigUpdate);
+  }
 
   swapBtn.addEventListener('click', () => {
     const prevSrc = sourceSelect.value;

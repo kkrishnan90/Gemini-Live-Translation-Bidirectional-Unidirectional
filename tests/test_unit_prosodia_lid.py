@@ -165,3 +165,61 @@ def test_analyze_utterance_sub_250ms_latency(engine: ProsodiaLanguageGateEngine)
             f"Expected < 250ms latency for {fname}, got {res['inference_ms']}ms"
         )
 
+
+def test_bidirectional_mode_translates_both_source_and_target_and_silences_other(
+    engine: ProsodiaLanguageGateEngine,
+) -> None:
+    """In bidirectional mode (Source=en-US, Target=hi-IN):
+    - English (Source) -> translates to Hindi (TRANSLATE_SOURCE_TO_TARGET, translated_to_lang='hi-IN')
+    - Hindi (Target) -> translates to English (TRANSLATE_TARGET_TO_SOURCE, translated_to_lang='en-US')
+    - Tamil & Bengali (3rd unselected languages) -> stays 100% silent (STAY_SILENT_UNSELECTED_LANGUAGE)
+    """
+    wav_en = load_sample_wav("human_query_en.wav")
+    res_en = engine.analyze_utterance(
+        wav=wav_en,
+        source_lang="en-US",
+        target_lang="hi-IN",
+        bidirectional=True,
+    )
+    assert res_en["bidirectional"] is True
+    assert res_en["detected_iso"] == "en"
+    assert res_en["detected_role"] == "source"
+    assert res_en["should_translate"] is True
+    assert res_en["stay_silent"] is False
+    assert res_en["gate_action"] == "TRANSLATE_SOURCE_TO_TARGET"
+    assert res_en["translated_to_lang"] == "hi-IN"
+
+    wav_hi = load_sample_wav("human_sentence_hindi.wav")
+    res_hi = engine.analyze_utterance(
+        wav=wav_hi,
+        source_lang="en-US",
+        target_lang="hi-IN",
+        bidirectional=True,
+    )
+    assert res_hi["bidirectional"] is True
+    assert res_hi["detected_iso"] == "hi"
+    assert res_hi["detected_role"] == "target"
+    assert res_hi["should_translate"] is True
+    assert res_hi["stay_silent"] is False
+    assert res_hi["gate_action"] == "TRANSLATE_TARGET_TO_SOURCE"
+    assert res_hi["translated_to_lang"] == "en-US"
+
+    for third_wav_file, expected_iso in [
+        ("human_sentence_tamil.wav", "ta"),
+        ("human_sentence_bengali.wav", "bn"),
+    ]:
+        wav_other = load_sample_wav(third_wav_file)
+        res_other = engine.analyze_utterance(
+            wav=wav_other,
+            source_lang="en-US",
+            target_lang="hi-IN",
+            bidirectional=True,
+        )
+        assert res_other["detected_iso"] == expected_iso
+        assert res_other["detected_role"] == "other"
+        assert res_other["should_translate"] is False
+        assert res_other["stay_silent"] is True
+        assert res_other["gate_action"] == "STAY_SILENT_UNSELECTED_LANGUAGE"
+        assert res_other["translated_to_lang"] is None
+
+

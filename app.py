@@ -250,6 +250,7 @@ async def analyze_sample_endpoint(payload: dict[str, Any]) -> JSONResponse:
     sample_id = str(payload.get("sample_id", "hindi"))
     source_lang = str(payload.get("source_lang", DEFAULT_SOURCE_LANG))
     target_lang = str(payload.get("target_lang", DEFAULT_TARGET_LANG))
+    bidirectional = bool(payload.get("bidirectional", False))
     try:
         validate_language_pair(source_lang, target_lang)
     except ValueError as exc:
@@ -265,6 +266,7 @@ async def analyze_sample_endpoint(payload: dict[str, Any]) -> JSONResponse:
         target_lang,
         None,
         0.55,
+        bidirectional,
     )
     result["sample"] = meta
     return JSONResponse(result)
@@ -275,6 +277,7 @@ async def analyze_upload_endpoint(
     audio: UploadFile = File(...),
     source_lang: str = Form(DEFAULT_SOURCE_LANG),
     target_lang: str = Form(DEFAULT_TARGET_LANG),
+    bidirectional: bool = Form(False),
 ) -> JSONResponse:
     try:
         validate_language_pair(source_lang, target_lang)
@@ -298,6 +301,7 @@ async def analyze_upload_endpoint(
         target_lang,
         None,
         0.55,
+        bidirectional,
     )
     return JSONResponse(result)
 
@@ -326,6 +330,7 @@ async def websocket_translate_endpoint(ws: WebSocket) -> None:
         "source_lang": DEFAULT_SOURCE_LANG,
         "target_lang": DEFAULT_TARGET_LANG,
         "voice_name": DEFAULT_VOICE_NAME,
+        "bidirectional": False,
         "custom_instruction": "",
         "silero_vad": {
             "threshold": 0.50,
@@ -351,6 +356,8 @@ async def websocket_translate_endpoint(ws: WebSocket) -> None:
                 session_config["target_lang"] = tgt_cand
                 if "voice_name" in cfg_in:
                     session_config["voice_name"] = str(cfg_in["voice_name"])
+                if "bidirectional" in cfg_in:
+                    session_config["bidirectional"] = bool(cfg_in["bidirectional"])
                 if "custom_instruction" in cfg_in:
                     session_config["custom_instruction"] = str(cfg_in["custom_instruction"])
                 if "silero_vad" in cfg_in and isinstance(cfg_in["silero_vad"], dict):
@@ -372,6 +379,7 @@ async def websocket_translate_endpoint(ws: WebSocket) -> None:
         source_lang = session_config["source_lang"]
         target_lang = session_config["target_lang"]
         voice_name = session_config["voice_name"]
+        bidirectional = bool(session_config.get("bidirectional", False))
         custom_instruction = session_config["custom_instruction"]
 
         live_connect_config = build_translation_live_config(
@@ -379,6 +387,7 @@ async def websocket_translate_endpoint(ws: WebSocket) -> None:
             target_lang=target_lang,
             voice_name=voice_name,
             custom_instruction=custom_instruction,
+            bidirectional=bidirectional,
         )
 
         await ws_send_json(
@@ -466,6 +475,7 @@ async def websocket_translate_endpoint(ws: WebSocket) -> None:
                     on_gate_decision=ws_send_json,
                     on_vad_telemetry=ws_send_json,
                     vad_cfg=session_config["silero_vad"],
+                    bidirectional=bidirectional,
                 )
 
                 async def receive_from_gemini() -> None:
@@ -609,6 +619,8 @@ async def websocket_translate_endpoint(ws: WebSocket) -> None:
                                     session_config["target_lang"] = tgt_cand
                                     if "voice_name" in cfg_in:
                                         session_config["voice_name"] = str(cfg_in["voice_name"])
+                                    if "bidirectional" in cfg_in:
+                                        session_config["bidirectional"] = bool(cfg_in["bidirectional"])
                                     if "custom_instruction" in cfg_in:
                                         session_config["custom_instruction"] = str(cfg_in["custom_instruction"])
                                     if "silero_vad" in cfg_in and isinstance(cfg_in["silero_vad"], dict):

@@ -87,6 +87,39 @@ def test_samples_and_analyze_endpoints(client: TestClient) -> None:
     assert d_src["stay_silent"] is True
     assert d_src["gate_action"] == "STAY_SILENT_SOURCE_SPOKEN"
 
+    # 3. Bidirectional=True: Source spoken (English) -> TRANSLATE_SOURCE_TO_TARGET; 3rd lang (Tamil) -> SILENT
+    r_bi_src = client.post(
+        "/api/analyze-sample",
+        json={
+            "sample_id": "english",
+            "source_lang": "en-US",
+            "target_lang": "hi-IN",
+            "bidirectional": True,
+        },
+    )
+    assert r_bi_src.status_code == 200
+    d_bi_src = r_bi_src.json()
+    assert d_bi_src["bidirectional"] is True
+    assert d_bi_src["should_translate"] is True
+    assert d_bi_src["stay_silent"] is False
+    assert d_bi_src["gate_action"] == "TRANSLATE_SOURCE_TO_TARGET"
+    assert d_bi_src["translated_to_lang"] == "hi-IN"
+
+    r_bi_other = client.post(
+        "/api/analyze-sample",
+        json={
+            "sample_id": "tamil",
+            "source_lang": "en-US",
+            "target_lang": "hi-IN",
+            "bidirectional": True,
+        },
+    )
+    assert r_bi_other.status_code == 200
+    d_bi_other = r_bi_other.json()
+    assert d_bi_other["should_translate"] is False
+    assert d_bi_other["stay_silent"] is True
+    assert d_bi_other["gate_action"] == "STAY_SILENT_UNSELECTED_LANGUAGE"
+
 
 def test_index_html_served(client: TestClient) -> None:
     resp = client.get("/")
@@ -95,11 +128,13 @@ def test_index_html_served(client: TestClient) -> None:
     assert '<h1 class="app-title">Gemini Live Translation</h1>' in text
     assert "<title>Gemini Live Translation" in text
     assert "gemini-3.8-live" in text
+    assert "bidirectional-toggle" in text
     assert "sample-grid" not in text
     assert "sample-strip" not in text
 
     js_resp = client.get("/static/app.js")
     assert js_resp.status_code == 200
+    assert "bidirectional-toggle" in js_resp.text
     assert "sample-grid" not in js_resp.text
     assert "inject_sample_audio" not in js_resp.text
 
@@ -281,3 +316,88 @@ def test_live_websocket_english_to_tamil_no_xml_tags_or_truncation(client: TestC
             f"Expected complete non-truncated audio (>1.0s / >48KB), got {translated_audio_bytes} bytes "
             f"(transcript={agent_tx!r})"
         )
+
+
+def test_live_websocket_bidirectional_mode_on_geap(client: TestClient) -> None:
+    """Verify bidirectional mode translates both Source -> Target and Target -> Source while silencing 3rd languages."""
+    with client.websocket_connect("/ws/translate") as ws:
+        ws.send_text(
+            json.dumps(
+                {
+                    "type": "setup",
+                    "config": {
+                        "source_lang": "en-US",
+                        "target_lang": "hi-IN",
+                        "voice_name": "Kore",
+                        "bidirectional": True,
+                    },
+                }
+            )
+        )
+        ready = _drain_until_session_ready(ws)
+        assert ready["config"]["bidirectional"] is True
+
+        # 1. Source language spoken (English) -> translates to Hindi!
+        ws.send_text(json.dumps({"type": "inject_sample_audio", "sample_id": "english"}))
+        audio_bytes_src = 0
+        gate_src = None
+        turn_src = None
+        deadline = time.monotonic() + 25.0
+        while time.monotonic() < deadline:
+            msg = ws.receive()
+            if "bytes" in msg and msg["bytes"]:
+                audio_bytes_src += len(msg["bytes"])
+            elif "text" in msg and msg["text"]:
+                payload = json.loads(msg["text"])
+                if payload.get("type") == "gate_decision":
+                    gate_src = payload
+                elif payload.get("type") == "turn_complete":
+                    turn_src = payload
+                    break
+        assert gate_src is not None
+        assert gate_src["gate_action"] == "TRANSLATE_SOURCE_TO_TARGET"
+        assert gate_src["translated_to_lang"] == "hi-IN"
+        assert audio_bytes_src > 24000
+        assert turn_src is not None and len(turn_src.get("agent_transcript", "").strip()) > 0
+
+        # 2. Target language spoken (Hindi) -> translates to English!
+        ws.send_text(json.dumps({"type": "inject_sample_audio", "sample_id": "hindi"}))
+        audio_bytes_tgt = 0
+        gate_tgt = None
+        turn_tgt = None
+        deadline = time.monotonic() + 25.0
+        while time.monotonic() < deadline:
+            msg = ws.receive()
+            if "bytes" in msg and msg["bytes"]:
+                audio_bytes_tgt += len(msg["bytes"])
+            elif "text" in msg and msg["text"]:
+                payload = json.loads(msg["text"])
+                if payload.get("type") == "gate_decision":
+                    gate_tgt = payload
+                elif payload.get("type") == "turn_complete":
+                    turn_tgt = payload
+                    break
+        assert gate_tgt is not None
+        assert gate_tgt["gate_action"] == "TRANSLATE_TARGET_TO_SOURCE"
+        assert gate_tgt["translated_to_lang"] == "en-US"
+        assert audio_bytes_tgt > 24000
+        assert turn_tgt is not None and len(turn_tgt.get("agent_transcript", "").strip()) > 0
+
+        # 3. Unselected 3rd language spoken (Tamil) -> stays 100% silent!
+        ws.send_text(json.dumps({"type": "inject_sample_audio", "sample_id": "tamil"}))
+        gate_other = None
+        deadline = time.monotonic() + 12.0
+        while time.monotonic() < deadline:
+            msg = ws.receive()
+            if "bytes" in msg and msg["bytes"]:
+                pytest.fail("Received unexpected audio bytes for unselected 3rd language in bidirectional mode!")
+            elif "text" in msg and msg["text"]:
+                payload = json.loads(msg["text"])
+                if payload.get("type") == "gate_decision":
+                    gate_other = payload
+                    break
+        assert gate_other is not None
+        assert gate_other["stay_silent"] is True
+        assert gate_other["gate_action"] == "STAY_SILENT_UNSELECTED_LANGUAGE"
+        assert gate_other["bytes_forwarded_to_gemini"] == 0
+

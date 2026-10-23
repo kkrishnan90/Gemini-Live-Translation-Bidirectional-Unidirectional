@@ -307,3 +307,84 @@ async def test_gate_early_prefix_streaming_lid_on_realtime_mic_chunks(
     assert gate_decisions[0]["should_translate"] is True
     assert gate_decisions[0]["trigger_source"] == "early_prefix_lid"
 
+
+def test_build_translation_live_config_bidirectional_mode() -> None:
+    """Verify bidirectional LiveConnectConfig allows both Source and Target output and sets bidirectional prompt."""
+    cfg = build_translation_live_config(
+        source_lang="en-US",
+        target_lang="hi-IN",
+        voice_name="Kore",
+        bidirectional=True,
+    )
+    assert cfg.response_modalities == [types.Modality.AUDIO]
+    # In bidirectional mode, language_code is None so Gemini 3.8 Live can speak both Source and Target
+    assert cfg.speech_config.language_code is None
+    assert cfg.realtime_input_config.automatic_activity_detection.disabled is True
+    si_text = cfg.system_instruction.parts[0].text
+    assert "When speech is in Hindi (India) (hi-IN), speak to the listener in English (US) (en-US)." in si_text
+    assert "When speech is in English (US) (en-US), speak to the listener in Hindi (India) (hi-IN)." in si_text
+
+
+@pytest.mark.asyncio
+async def test_gate_bidirectional_mode_forwards_both_source_and_target_and_suppresses_third_language(
+    lid_engine: ProsodiaLanguageGateEngine,
+) -> None:
+    """In bidirectional mode, both Source and Target utterances trigger manual VAD turns, while 3rd languages stay silent."""
+    events: list[str] = []
+    gate_decisions: list[dict[str, Any]] = []
+
+    async def on_start() -> None:
+        events.append("activity_start")
+
+    async def on_pcm(data: bytes) -> None:
+        events.append("pcm")
+
+    async def on_end() -> None:
+        events.append("activity_end")
+
+    async def on_decision(payload: dict[str, Any]) -> None:
+        gate_decisions.append(payload)
+
+    async def on_telemetry(payload: dict[str, Any]) -> None:
+        pass
+
+    gate = SileroProsodiaTranslationGate(
+        engine=lid_engine,
+        source_lang="en-US",
+        target_lang="hi-IN",
+        on_trigger_activity_start=on_start,
+        on_stream_pcm_to_gemini=on_pcm,
+        on_trigger_activity_end=on_end,
+        on_gate_decision=on_decision,
+        on_vad_telemetry=on_telemetry,
+        bidirectional=True,
+    )
+
+    # 1. Source language spoken (English) -> translates to Hindi in bidirectional mode!
+    pcm_en = load_pcm_with_trailing_silence("human_query_en.wav")
+    await gate.process_pcm_bytes(pcm_en)
+    assert events == ["activity_start", "pcm", "activity_end"]
+    assert gate_decisions[-1]["should_translate"] is True
+    assert gate_decisions[-1]["gate_action"] == "TRANSLATE_SOURCE_TO_TARGET"
+    assert gate_decisions[-1]["translated_to_lang"] == "hi-IN"
+
+    # 2. Target language spoken (Hindi) -> translates to English!
+    events.clear()
+    pcm_hi = load_pcm_with_trailing_silence("human_sentence_hindi.wav")
+    await gate.process_pcm_bytes(pcm_hi)
+    assert events == ["activity_start", "pcm", "activity_end"]
+    assert gate_decisions[-1]["should_translate"] is True
+    assert gate_decisions[-1]["gate_action"] == "TRANSLATE_TARGET_TO_SOURCE"
+    assert gate_decisions[-1]["translated_to_lang"] == "en-US"
+
+    # 3. Unselected 3rd language spoken (Tamil) -> stays 100% silent (0 bytes forwarded)!
+    events.clear()
+    pcm_ta = load_pcm_with_trailing_silence("human_sentence_tamil.wav")
+    await gate.process_pcm_bytes(pcm_ta)
+    assert events == []
+    assert gate_decisions[-1]["should_translate"] is False
+    assert gate_decisions[-1]["stay_silent"] is True
+    assert gate_decisions[-1]["gate_action"] == "STAY_SILENT_UNSELECTED_LANGUAGE"
+    assert gate_decisions[-1]["bytes_forwarded_to_gemini"] == 0
+
+

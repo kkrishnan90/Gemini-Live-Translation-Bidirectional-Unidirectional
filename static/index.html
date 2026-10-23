@@ -66,7 +66,7 @@
         <div class="lang-pill lang-pill-source">
           <div class="lang-pill-header">
             <span class="lang-role-label">Source</span>
-            <span class="lang-role-rule rule-silent">Silent</span>
+            <span class="lang-role-rule rule-silent" id="source-role-badge">Silent</span>
           </div>
           <div class="select-wrap">
             <select id="source-lang-select" aria-label="Source Language"></select>
@@ -89,7 +89,7 @@
         <div class="lang-pill lang-pill-target">
           <div class="lang-pill-header">
             <span class="lang-role-label">Target</span>
-            <span class="lang-role-rule rule-translate">Translate</span>
+            <span class="lang-role-rule rule-translate" id="target-role-badge">Translate</span>
           </div>
           <div class="select-wrap">
             <select id="target-lang-select" aria-label="Target Language"></select>
@@ -99,6 +99,17 @@
 
       <!-- Collapsible Settings Sheet -->
       <section class="settings-sheet hidden" id="settings-sheet" aria-label="Voice and Gate Telemetry">
+        <div class="sheet-toggle-row">
+          <div class="sheet-toggle-copy">
+            <span class="sheet-toggle-title">Bidirectional Translation</span>
+            <span class="sheet-toggle-sub" id="bidirectional-mode-hint">Off: Target -> Source only (Source stays silent)</span>
+          </div>
+          <label class="ios-switch" for="bidirectional-toggle">
+            <input type="checkbox" id="bidirectional-toggle" aria-label="Bidirectional Translation" />
+            <span class="ios-slider"></span>
+          </label>
+        </div>
+
         <div class="sheet-row">
           <div class="sheet-field">
             <label for="voice-select">Voice</label>

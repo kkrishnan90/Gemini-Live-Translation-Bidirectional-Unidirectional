@@ -6,10 +6,18 @@ Real-time unidirectional speech-to-speech interpreter powered by **Prosodia** (`
 
 ## Overview
 
-Traditional bidirectional voice agents respond to every utterance in the room. In a unidirectional interpretation scenario, a listener selects their **Source** language (the language they understand) and a **Target** language (the foreign language being spoken):
+Traditional bidirectional voice agents respond to every utterance in the room, including background chatter in unrelated languages. This application uses **Prosodia** (`ProsodiaLanguageGateEngine`) in front of `gemini-3.8-live` to support both **Unidirectional** (default) and **Bidirectional** (toggle in Settings) interpretation modes:
 
-1. **When the Target language is spoken**: The Prosodia Language Gate identifies the utterance as the Target language (`TRANSLATE_TARGET_TO_SOURCE`), frames the utterance with Manual Voice Activity Detection (`ActivityStart -> 16 kHz PCM -> ActivityEnd`), and streams it to `gemini-3.8-live` on **Agent Platform (formerly known as Vertex AI)**, which synthesizes natural first-person speech in the **Source** language (`24 kHz` PCM audio + native-script transcript).
-2. **When the Source language is spoken**: The Prosodia Language Gate identifies the utterance as the Source language (`STAY_SILENT_SOURCE_SPOKEN`) and drops the audio at the edge (`0 bytes` forwarded to `gemini-3.8-live`), guaranteeing **100% deterministic silence** with zero model turns or token consumption.
+### 1. Unidirectional Mode (Default)
+The listener selects their **Source** language (the language they understand) and a **Target** language (the foreign language being spoken):
+* **When the Target language is spoken**: The Prosodia Language Gate identifies the utterance as the Target language (`TRANSLATE_TARGET_TO_SOURCE`), frames the utterance with Manual Voice Activity Detection (`ActivityStart -> 16 kHz PCM -> ActivityEnd`), and streams it to `gemini-3.8-live` on **Agent Platform (formerly known as Vertex AI)**, which synthesizes natural first-person speech in the **Source** language (`24 kHz` PCM audio + native-script transcript).
+* **When the Source language (or any unselected language) is spoken**: The Prosodia Language Gate identifies the utterance (`STAY_SILENT_SOURCE_SPOKEN` or `STAY_SILENT_UNSELECTED_LANGUAGE`) and drops the audio at the edge (`0 bytes` forwarded to `gemini-3.8-live`), guaranteeing **100% deterministic silence** with zero model turns or token consumption.
+
+### 2. Bidirectional Mode (Settings Toggle)
+When the **Bidirectional Translation** switch is enabled in the app settings:
+* **When the Target language is spoken**: Translates seamlessly from **Target -> Source** (`TRANSLATE_TARGET_TO_SOURCE`).
+* **When the Source language is spoken**: Translates seamlessly from **Source -> Target** (`TRANSLATE_SOURCE_TO_TARGET`).
+* **When any other (unselected) language is spoken**: Drops the audio at the edge (`STAY_SILENT_UNSELECTED_LANGUAGE`, `0 bytes` forwarded to `gemini-3.8-live`), keeping the interpreter completely silent for third-party languages or noise.
 
 ---
 

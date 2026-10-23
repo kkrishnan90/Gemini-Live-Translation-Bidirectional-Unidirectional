@@ -333,6 +333,7 @@ class ProsodiaLanguageGateEngine:
         target_lang: str,
         silero_speech_duration_s: float | None = None,
         confidence_threshold: float = 0.55,
+        bidirectional: bool = False,
     ) -> dict[str, Any]:
         """Identify spoken language and extract Prosodia paralinguistic prosody in ~115-150 ms."""
         if not threading.current_thread().name.startswith("prosodia_torch_worker"):
@@ -343,6 +344,7 @@ class ProsodiaLanguageGateEngine:
                 target_lang,
                 silero_speech_duration_s,
                 confidence_threshold,
+                bidirectional,
             ).result()
         return self._analyze_utterance_impl(
             wav,
@@ -350,6 +352,7 @@ class ProsodiaLanguageGateEngine:
             target_lang,
             silero_speech_duration_s,
             confidence_threshold,
+            bidirectional,
         )
 
     def _analyze_utterance_impl(
@@ -359,6 +362,7 @@ class ProsodiaLanguageGateEngine:
         target_lang: str,
         silero_speech_duration_s: float | None = None,
         confidence_threshold: float = 0.55,
+        bidirectional: bool = False,
     ) -> dict[str, Any]:
         if torch.get_num_threads() < OPTIMAL_TORCH_THREADS:
             torch.set_num_threads(OPTIMAL_TORCH_THREADS)
@@ -408,11 +412,14 @@ class ProsodiaLanguageGateEngine:
                     "target_lang": target_lang,
                     "source_iso": src_iso,
                     "target_iso": tgt_iso,
+                    "bidirectional": bool(bidirectional),
                     "detected_iso": "none",
                     "detected_language_name": "Silence / Noise",
                     "detected_role": "noise",
                     "should_translate": False,
                     "stay_silent": True,
+                    "translated_to_lang": None,
+                    "translated_to_language_name": None,
                     "gate_action": "IGNORE_NOISE_OR_SILENCE",
                     "reason": (
                         f"Ignored low-energy/unvoiced audio (active={active_dur}s, "
@@ -521,13 +528,17 @@ class ProsodiaLanguageGateEngine:
         # Check if an unselected third language clearly dominates over both Source and Target
         if (
             top_global_iso not in (src_iso, tgt_iso)
-            and top_global_prob >= 0.50
-            and pair_global_mass < 0.35
+            and (
+                (top_global_prob >= 0.45 and pair_global_mass < 0.45)
+                or (top_global_prob > pair_global_mass and pair_global_mass < 0.35)
+            )
         ):
             detected_iso = top_global_iso
             detected_role = "other"
             should_translate = False
             stay_silent = True
+            translated_to_lang = None
+            translated_to_language_name = None
             gate_action = "STAY_SILENT_UNSELECTED_LANGUAGE"
             reason = (
                 f"Prosodia detected unselected language '{self.iso_to_display.get(detected_iso, detected_iso)}' "
@@ -539,17 +550,34 @@ class ProsodiaLanguageGateEngine:
             detected_role = "target"
             should_translate = True
             stay_silent = False
+            translated_to_lang = source_lang
+            translated_to_language_name = src_info["name"]
             gate_action = "TRANSLATE_TARGET_TO_SOURCE"
             reason = (
                 f"Prosodia identified Target language {tgt_info['name']} "
                 f"(P({tgt_iso})={tgt_pair_prob:.2%} vs P({src_iso})={src_pair_prob:.2%}). "
                 f"Forwarding to Gemini 3.8 Live to translate into {src_info['name']}."
             )
+        elif bidirectional and src_pair_prob >= tgt_pair_prob and src_pair_prob >= confidence_threshold:
+            detected_iso = src_iso
+            detected_role = "source"
+            should_translate = True
+            stay_silent = False
+            translated_to_lang = target_lang
+            translated_to_language_name = tgt_info["name"]
+            gate_action = "TRANSLATE_SOURCE_TO_TARGET"
+            reason = (
+                f"Prosodia identified Source language {src_info['name']} "
+                f"(P({src_iso})={src_pair_prob:.2%} vs P({tgt_iso})={tgt_pair_prob:.2%}). "
+                f"Bidirectional mode active: forwarding to Gemini 3.8 Live to translate into {tgt_info['name']}."
+            )
         else:
             detected_iso = src_iso
             detected_role = "source"
             should_translate = False
             stay_silent = True
+            translated_to_lang = None
+            translated_to_language_name = None
             gate_action = "STAY_SILENT_SOURCE_SPOKEN"
             reason = (
                 f"Prosodia identified Source language {src_info['name']} "
@@ -563,11 +591,14 @@ class ProsodiaLanguageGateEngine:
             "target_lang": target_lang,
             "source_iso": src_iso,
             "target_iso": tgt_iso,
+            "bidirectional": bool(bidirectional),
             "detected_iso": detected_iso,
             "detected_language_name": self.iso_to_display.get(detected_iso, detected_iso),
             "detected_role": detected_role,
             "should_translate": should_translate,
             "stay_silent": stay_silent,
+            "translated_to_lang": translated_to_lang,
+            "translated_to_language_name": translated_to_language_name,
             "gate_action": gate_action,
             "reason": reason,
             "language_probabilities": {
