@@ -1,6 +1,6 @@
-# Gemini Live Translation (Unidirectional)
+# Gemini Live Translation - Bidirectional & Unidirectional
 
-Real-time unidirectional speech-to-speech interpreter powered by **Prosodia** (`audio-jevlike` paralinguistic prosody + `openai/whisper-small` language identification) and **Gemini 3.8 Flash Live** (`gemini-3.8-live`) on **Agent Platform (formerly known as Vertex AI)**.
+Real-time speech-to-speech interpreter with **Unidirectional** and **Bidirectional** translation toggle, powered by **Prosodia** (`audio-jevlike` paralinguistic prosody + `openai/whisper-small` language identification) and **Gemini 3.8 Flash Live** (`gemini-3.8-live`) on **Agent Platform (formerly known as Vertex AI)**.
 
 ---
 
@@ -61,15 +61,15 @@ flowchart TB
     Whisper --> Decision
     Prosodia --> Decision
 
-    Decision -->|"Source Spoken (STAY_SILENT)<br/>0 Bytes Forwarded"| WS
-    Decision -->|"Target Spoken (TRANSLATE)<br/>ActivityStart + PCM + ActivityEnd"| Gemini
+    Decision -->|"STAY_SILENT (Unselected Language, or Source in Unidirectional)<br/>0 Bytes Forwarded"| WS
+    Decision -->|"TRANSLATE (Target->Source, or Source->Target in Bidirectional)<br/>ActivityStart + PCM + ActivityEnd"| Gemini
     Gemini -->|"24 kHz Translated PCM Audio"| WS
     Gemini -->|"Output Transcription"| Sanitizer
     Sanitizer -->|"Clean Native-Script Text"| WS
     WS -->|"24 kHz PCM Binary Frames"| Speaker
 ```
 
-### 2. Real-Time Unidirectional Gate Sequence
+### 2. Real-Time Unidirectional & Bidirectional Gate Sequence
 
 ```mermaid
 sequenceDiagram
@@ -95,13 +95,29 @@ sequenceDiagram
         Gemini-->>Browser: turn_complete
     end
 
-    rect rgb(245, 245, 247)
-        Note over User,Gemini: Case B: Source Language Spoken (Tamil -> Stay 100% Silent)
+    rect rgb(238, 244, 255)
+        Note over User,Gemini: Case B: Source Language Spoken (Tamil)
         User->>Browser: Speaks Tamil
         Browser->>Gate: Streams 16 kHz PCM frames (32ms chunks)
         Gate->>Gate: Silero VAD detects speech start & end
         Gate->>Gate: Prosodia LID + Prosody inference (~140 ms)<br/>detected_iso="ta" (Source), P(source)=0.99
-        Gate-->>Browser: gate_decision (STAY_SILENT_SOURCE_SPOKEN, bytes_forwarded=0)
+        alt Unidirectional Mode (bidirectional = false)
+            Gate-->>Browser: gate_decision (STAY_SILENT_SOURCE_SPOKEN, bytes_forwarded=0)
+            Note over Gate,Gemini: Zero activity signals and zero audio bytes sent to gemini-3.8-live
+        else Bidirectional Mode (bidirectional = true)
+            Gate-->>Browser: gate_decision (TRANSLATE_SOURCE_TO_TARGET)
+            Gate->>Gemini: send_realtime_input(activity_start + audio + activity_end)
+            Gemini-->>Browser: 24 kHz English Audio Chunks + Sanitized English Transcript
+            Gemini-->>Browser: turn_complete
+        end
+    end
+
+    rect rgb(245, 245, 247)
+        Note over User,Gemini: Case C: Any Unselected Third Language Spoken (e.g. Hindi -> Stay 100% Silent in Both Modes)
+        User->>Browser: Speaks Hindi
+        Browser->>Gate: Streams 16 kHz PCM frames (32ms chunks)
+        Gate->>Gate: Prosodia LID detects "hi" (neither Source nor Target)
+        Gate-->>Browser: gate_decision (STAY_SILENT_UNSELECTED_LANGUAGE, bytes_forwarded=0)
         Note over Gate,Gemini: Zero activity signals and zero audio bytes sent to gemini-3.8-live
     end
 ```

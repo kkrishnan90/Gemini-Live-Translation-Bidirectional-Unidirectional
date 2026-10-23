@@ -186,7 +186,7 @@ def load_sample_waveform(sample_id: str) -> tuple[np.ndarray, dict[str, Any]]:
 
 
 app = FastAPI(
-    title="Gemini Live Translation (Unidirectional)",
+    title="Gemini Live Translation - Bidirectional & Unidirectional",
     version="1.0.0",
 )
 
